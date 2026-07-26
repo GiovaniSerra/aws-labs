@@ -1,0 +1,199 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS Infrastructure as Code - Centralized Security Monitoring Pipeline using
+  CloudTrail, CloudWatch Logs, Custom Metric Filters, Alarms, and SNS Notifications.
+
+Parameters:
+  NotificationEmail:
+    Type: String
+    Description: Email address to receive security alert notifications.
+    AllowedPattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    ConstraintDescription: Must be a valid email address.
+
+Resources:
+  # 1. S3 Storage for Trail Logs
+  CloudTrailS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "cloudtrail-logs-${AWS::AccountId}-${AWS::Region}-${AWS::StackName}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CloudTrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CloudTrailS3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: !GetAtt CloudTrailS3Bucket.Arn
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "${CloudTrailS3Bucket.Arn}/AWSLogs/${AWS::AccountId}/*"
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+
+  # 2. IAM Role for CloudTrail
+  CloudTrailCWLogsRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "LabCloudTrailRole-${AWS::StackName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudTrailCWLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub "${CloudTrailLogGroup.Arn}:*"
+
+  # 3. CloudWatch Log Group
+  CloudTrailLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/cloudtrail/MyLabCloudTrail-${AWS::StackName}"
+      RetentionInDays: 7
+
+  # 4. CloudTrail Trail
+  MyLabCloudTrail:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: CloudTrailBucketPolicy
+    Properties:
+      TrailName: MyLabCloudTrail
+      S3BucketName: !Ref CloudTrailS3Bucket
+      IsLogging: true
+      IncludeGlobalServiceEvents: true
+      IsMultiRegionTrail: false
+      CloudWatchLogsLogGroupArn: !Sub "${CloudTrailLogGroup.Arn}:*"
+      CloudWatchLogsRoleArn: !GetAtt CloudTrailCWLogsRole.Arn
+
+  # 5. SNS Notification Channel
+  SecurityAlertSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "MySNSTopic-${AWS::StackName}"
+      Subscription:
+        - Endpoint: !Ref NotificationEmail
+          Protocol: email
+
+  # 6. Metric Filter 1: Failed Logins
+  ConsoleLoginFailureMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ ($.eventName = ConsoleLogin) && ($.responseElements.ConsoleLogin = "Failure") }'
+      MetricTransformations:
+        - MetricValue: '1'
+          MetricNamespace: CloudTrailMetrics
+          MetricName: ConsoleLoginFailureCount
+
+  # 7. Metric Filter 2: IAM Policy Changes
+  IAMPolicyChangesMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ ($.eventName = PutGroupPolicy) || ($.eventName = PutRolePolicy) || ($.eventName = PutUserPolicy) || ($.eventName = AttachRolePolicy) || ($.eventName = AttachUserPolicy) || ($.eventName = AttachGroupPolicy) }'
+      MetricTransformations:
+        - MetricValue: '1'
+          MetricNamespace: CloudTrailMetrics
+          MetricName: IAMPolicyEventCount
+
+  # 8. Metric Filter 3: CloudTrail Disabling Attempts
+  CloudTrailChangesMetricFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroup
+      FilterPattern: '{ ($.eventName = StopLogging) || ($.eventName = DeleteTrail) || ($.eventName = UpdateTrail) }'
+      MetricTransformations:
+        - MetricValue: '1'
+          MetricNamespace: CloudTrailMetrics
+          MetricName: CloudTrailEventCount
+
+  # 9. CloudWatch Alarm 1: Failed Logins
+  FailedLoginsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: FailedLogins
+      AlarmDescription: Triggers when console login failures reach or exceed 3 in 5 minutes.
+      MetricName: ConsoleLoginFailureCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: missing
+      AlarmActions:
+        - !Ref SecurityAlertSNSTopic
+
+  # 10. CloudWatch Alarm 2: IAM Policy Changes
+  IAMPolicyChangesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: IAMPolicyChanges
+      AlarmDescription: Triggers immediately when IAM policies are created, updated, or attached.
+      MetricName: IAMPolicyEventCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: missing
+      AlarmActions:
+        - !Ref SecurityAlertSNSTopic
+
+  # 11. CloudWatch Alarm 3: CloudTrail Tampering
+  CloudTrailTamperingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: CloudTrailTampering
+      AlarmDescription: Triggers immediately if a trail is updated, stopped, or deleted.
+      MetricName: CloudTrailEventCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: missing
+      AlarmActions:
+        - !Ref SecurityAlertSNSTopic
+
+Outputs:
+  StackTrailArn:
+    Description: ARN of the created CloudTrail Trail
+    Value: !GetAtt MyLabCloudTrail.Arn
+  StackBucketName:
+    Description: Name of the created S3 Bucket for CloudTrail
+    Value: !Ref CloudTrailS3Bucket
+  SNSTopicArn:
+    Description: ARN of the created SNS Topic
+    Value: !Ref SecurityAlertSNSTopic
+  LogGroupArn:
+    Description: ARN of the CloudWatch Log Group
+    Value: !GetAtt CloudTrailLogGroup.Arn
