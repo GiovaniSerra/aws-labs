@@ -43,6 +43,23 @@ In cloud security operations, understanding delivery SLAs prevents false assumpt
 
 ---
 
+## Infrastructure as Code (IaC) Deployment
+
+This entire security monitoring architecture can be automatically provisioned using the included **AWS CloudFormation** template (`template.yaml`).
+
+### Deployment via AWS CLI
+
+Run the following command to deploy the stack, replacing the email parameter with your target notification address:
+
+```bash
+aws cloudformation deploy \
+  --template-file template.yaml \
+  --stack-name cloudtrail-security-monitoring \
+  --parameter-overrides NotificationEmail="your-email@example.com" \
+  --capabilities CAPABILITY_NAMED_IAM
+```
+---
+
 ## Step-by-Step Implementation
 
 ### Task 1: Create a CloudTrail Trail with CloudWatch Logs Enabled
