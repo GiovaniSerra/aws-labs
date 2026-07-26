@@ -45,7 +45,7 @@ In cloud security operations, understanding delivery SLAs prevents false assumpt
 
 ## Infrastructure as Code (IaC) Deployment
 
-This entire security monitoring architecture can be automatically provisioned using the included **AWS CloudFormation** template (`template.yaml`).
+This entire security monitoring architecture can be automatically provisioned using the included **AWS CloudFormation** template [template.yaml](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/template.yaml).
 
 ### Deployment via AWS CLI
 
