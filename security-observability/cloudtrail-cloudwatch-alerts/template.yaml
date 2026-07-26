@@ -3,6 +3,14 @@ Description: >
   AWS Infrastructure as Code - Centralized Security Monitoring Pipeline using
   CloudTrail, CloudWatch Logs, Custom Metric Filters, Alarms, and SNS Notifications.
 
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Notification Settings
+        Parameters:
+          - NotificationEmail
+
 Parameters:
   NotificationEmail:
     Type: String
@@ -11,16 +19,22 @@ Parameters:
     ConstraintDescription: Must be a valid email address.
 
 Resources:
-  # 1. S3 Storage for Trail Logs
+  # 1. S3 Storage for Trail Logs (Name generated automatically by CloudFormation to avoid 63-char limit)
   CloudTrailS3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "cloudtrail-logs-${AWS::AccountId}-${AWS::Region}-${AWS::StackName}"
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: SecurityMonitoringLab
+        - Key: Environment
+          Value: Lab
+        - Key: ManagedBy
+          Value: CloudFormation
 
   CloudTrailBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -66,7 +80,15 @@ Resources:
                 Action:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Resource: !Sub "${CloudTrailLogGroup.Arn}:*"
+                  - logs:DescribeLogStreams
+                Resource: !Sub "${CloudTrailLogGroup.Arn}:log-stream:*"
+      Tags:
+        - Key: Project
+          Value: SecurityMonitoringLab
+        - Key: Environment
+          Value: Lab
+        - Key: ManagedBy
+          Value: CloudFormation
 
   # 3. CloudWatch Log Group
   CloudTrailLogGroup:
@@ -74,19 +96,35 @@ Resources:
     Properties:
       LogGroupName: !Sub "/aws/cloudtrail/MyLabCloudTrail-${AWS::StackName}"
       RetentionInDays: 7
+      Tags:
+        - Key: Project
+          Value: SecurityMonitoringLab
+        - Key: Environment
+          Value: Lab
+        - Key: ManagedBy
+          Value: CloudFormation
 
   # 4. CloudTrail Trail
   MyLabCloudTrail:
     Type: AWS::CloudTrail::Trail
     DependsOn: CloudTrailBucketPolicy
     Properties:
-      TrailName: MyLabCloudTrail
+      TrailName: !Sub "MyLabCloudTrail-${AWS::StackName}"
       S3BucketName: !Ref CloudTrailS3Bucket
       IsLogging: true
       IncludeGlobalServiceEvents: true
+      # Set to false to keep the lab focused on a single Region.
+      # Production environments should generally use true.
       IsMultiRegionTrail: false
       CloudWatchLogsLogGroupArn: !Sub "${CloudTrailLogGroup.Arn}:*"
       CloudWatchLogsRoleArn: !GetAtt CloudTrailCWLogsRole.Arn
+      Tags:
+        - Key: Project
+          Value: SecurityMonitoringLab
+        - Key: Environment
+          Value: Lab
+        - Key: ManagedBy
+          Value: CloudFormation
 
   # 5. SNS Notification Channel
   SecurityAlertSNSTopic:
@@ -96,6 +134,14 @@ Resources:
       Subscription:
         - Endpoint: !Ref NotificationEmail
           Protocol: email
+          # After deployment, confirm the subscription using the email sent by Amazon SNS. Until confirmed, alarm notifications will not be delivered.
+      Tags:
+        - Key: Project
+          Value: SecurityMonitoringLab
+        - Key: Environment
+          Value: Lab
+        - Key: ManagedBy
+          Value: CloudFormation
 
   # 6. Metric Filter 1: Failed Logins
   ConsoleLoginFailureMetricFilter:
@@ -119,12 +165,12 @@ Resources:
           MetricNamespace: CloudTrailMetrics
           MetricName: IAMPolicyEventCount
 
-  # 8. Metric Filter 3: CloudTrail Disabling Attempts
+  # 8. Metric Filter 3: CloudTrail Disabling or Tampering Attempts
   CloudTrailChangesMetricFilter:
     Type: AWS::Logs::MetricFilter
     Properties:
       LogGroupName: !Ref CloudTrailLogGroup
-      FilterPattern: '{ ($.eventName = StopLogging) || ($.eventName = DeleteTrail) || ($.eventName = UpdateTrail) }'
+      FilterPattern: '{ ($.eventName = StopLogging) || ($.eventName = StartLogging) || ($.eventName = DeleteTrail) || ($.eventName = UpdateTrail) }'
       MetricTransformations:
         - MetricValue: '1'
           MetricNamespace: CloudTrailMetrics
@@ -134,7 +180,7 @@ Resources:
   FailedLoginsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: FailedLogins
+      AlarmName: !Sub "FailedLogins-${AWS::StackName}"
       AlarmDescription: Triggers when console login failures reach or exceed 3 in 5 minutes.
       MetricName: ConsoleLoginFailureCount
       Namespace: CloudTrailMetrics
@@ -147,12 +193,19 @@ Resources:
       TreatMissingData: missing
       AlarmActions:
         - !Ref SecurityAlertSNSTopic
+      Tags:
+        - Key: Project
+          Value: SecurityMonitoringLab
+        - Key: Environment
+          Value: Lab
+        - Key: ManagedBy
+          Value: CloudFormation
 
   # 10. CloudWatch Alarm 2: IAM Policy Changes
   IAMPolicyChangesAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: IAMPolicyChanges
+      AlarmName: !Sub "IAMPolicyChanges-${AWS::StackName}"
       AlarmDescription: Triggers immediately when IAM policies are created, updated, or attached.
       MetricName: IAMPolicyEventCount
       Namespace: CloudTrailMetrics
@@ -165,13 +218,20 @@ Resources:
       TreatMissingData: missing
       AlarmActions:
         - !Ref SecurityAlertSNSTopic
+      Tags:
+        - Key: Project
+          Value: SecurityMonitoringLab
+        - Key: Environment
+          Value: Lab
+        - Key: ManagedBy
+          Value: CloudFormation
 
   # 11. CloudWatch Alarm 3: CloudTrail Tampering
   CloudTrailTamperingAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: CloudTrailTampering
-      AlarmDescription: Triggers immediately if a trail is updated, stopped, or deleted.
+      AlarmName: !Sub "CloudTrailTampering-${AWS::StackName}"
+      AlarmDescription: Triggers immediately if a trail is updated, stopped, started, or deleted.
       MetricName: CloudTrailEventCount
       Namespace: CloudTrailMetrics
       Statistic: Sum
@@ -183,8 +243,18 @@ Resources:
       TreatMissingData: missing
       AlarmActions:
         - !Ref SecurityAlertSNSTopic
+      Tags:
+        - Key: Project
+          Value: SecurityMonitoringLab
+        - Key: Environment
+          Value: Lab
+        - Key: ManagedBy
+          Value: CloudFormation
 
 Outputs:
+  TrailName:
+    Description: Name of the created CloudTrail Trail
+    Value: !Ref MyLabCloudTrail
   StackTrailArn:
     Description: ARN of the created CloudTrail Trail
     Value: !GetAtt MyLabCloudTrail.Arn
