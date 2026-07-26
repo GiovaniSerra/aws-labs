@@ -8,22 +8,7 @@ The solution also covers incident investigation and digital forensics using stru
 
 ## Solution Architecture
 
-[ AWS Console Login ]
-          │
-          ▼ (Failed Attempt)
-[ AWS CloudTrail ] ──► Records API audit logs
-          │
-          ▼
-[ Amazon CloudWatch Logs ] ──► Log Group: CloudTrailLogGroup
-          │
-          ▼
-[ Metric Filter ] ──► Filters event: ConsoleLogin with "Failed authentication"
-          │
-          ▼
-[ CloudWatch Alarm ] ──► Rule: ≥ 3 failures in 5 minutes
-          │
-          ▼
-[ Amazon SNS Topic ] ──► Email notification to the security team
+![Diagrama]([https://raw.githubusercontent.com/GiovaniSerra/Networking-labs/main/CCNA/advanced/dhcp-snooping/topology.png](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/ar.jpg))
 
 ## AWS Services Used
 AWS CloudTrail: Continuous recording of account activity and API calls.
