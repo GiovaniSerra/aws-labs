@@ -2,47 +2,65 @@
 # AWS Logging & Security Monitoring: CloudTrail & CloudWatch Alerts
 
 ## Overview
-This laboratory demonstrates the implementation of a continuous security monitoring and observability solution on AWS. The primary objective is to capture real-time audit events, monitor failed authentication attempts on the AWS Management Console, and trigger automated email notifications before potential security incidents escalate.
+This project demonstrates the implementation of a continuous security monitoring and observability solution on AWS. The primary objective is to capture real-time audit events, detect failed authentication attempts on the AWS Management Console, and trigger automated email notifications before potential security incidents escalate.
 
 The solution also covers incident investigation and digital forensics using structured queries in Amazon CloudWatch Logs Insights.
 
-## Solution Architecture
+## Architecture Diagram
 
 ![Diagrama](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/ar.jpg)
 
+Workflow
+User Authentication Attempt: A user attempts to log in to the AWS Management Console with invalid credentials.
+
+Event Capture (AWS CloudTrail): CloudTrail captures the failed login event (ConsoleLogin) across the AWS account.
+
+Log Delivery (Amazon CloudWatch Logs): Events are streamed in real time to a dedicated CloudWatch Log Group (CloudTrailLogGroup).
+
+Pattern Detection (Metric Filter): A metric filter scans log streams for failed authentication events and increments the ConsoleLoginFailureCount metric.
+
+Threshold Evaluation (CloudWatch Alarm): An alarm triggers when the failure count reaches or exceeds 3 attempts within a 5-minute window.
+
+Automated Alerting (Amazon SNS): The alarm transitions to the ALARM state and publishes a message to an SNS topic, delivering an immediate email notification to the security team.
+
+Forensic Analysis (CloudWatch Logs Insights): Administrators perform interactive queries over log data to analyze incident source details (IP address, user ARN, region).
+
 ## AWS Services Used
-AWS CloudTrail: Continuous recording of account activity and API calls.
 
-Amazon CloudWatch Logs: Centralized log storage, management, and retention.
+AWS CloudTrail: Captures account activity and API calls, streaming log events to CloudWatch Logs for centralized auditing.
 
-Amazon CloudWatch Metrics & Alarms: Creation of custom metrics and automated alarm rules based on operational thresholds.
+Amazon CloudWatch Logs: Serves as the central repository for log storage, retention, and real-time event filtering.
 
-Amazon Simple Notification Service (SNS): Pub/Sub messaging service for sending automated email alerts.
+Amazon CloudWatch Metrics & Alarms: Extracts quantitative metrics from log streams and monitors thresholds to trigger automated responses.
 
-CloudWatch Logs Insights: Interactive query engine for fast log analysis and incident response.
+Amazon Simple Notification Service (SNS): Handles pub/sub messaging to deliver real-time security alerts via email.
+
+Amazon CloudWatch Logs Insights: Provides an interactive query engine to perform rapid forensic analysis and incident investigation.
 
 ## Step-by-Step Implementation
 
-1. Audit Trail Configuration
-Reviewed management events captured by CloudTrail across the AWS account.
+Task 1: Create a CloudTrail Trail with CloudWatch Logs Enabled
+Configured an AWS CloudTrail trail (MyLabCloudTrail) to log management events across the AWS account.
 
-Configured the trail MyLabCloudTrail integrated with CloudWatch Logs targeting the CloudTrailLogGroup.
+Integrated the trail with Amazon CloudWatch Logs by targeting a dedicated Log Group (CloudTrailLogGroup).
 
-Associated the dedicated IAM role LabCloudTrailRole to grant appropriate log writing permissions.
+Associated the IAM role LabCloudTrailRole to grant CloudTrail the necessary permissions to write log streams.
 
-2. Notification Infrastructure Setup (Amazon SNS)
-Created a Standard SNS topic named MySNSTopic.
+Task 2: Create and Subscribe to an Amazon SNS Topic
+Created a Standard Amazon SNS topic named MySNSTopic to manage alert distribution.
 
-Configured access policies for publishers and subscribers.
+Configured access policies for message publishers and subscribers.
 
-Created an Email protocol subscription and confirmed subscription to receive infrastructure alerts.
+Added an Email subscription to the topic and confirmed the registration through the confirmation email.
 
-3. Metric Filter & CloudWatch Alarm Creation
-To detect potential brute-force attacks or unauthorized access attempts, a custom metric filter was applied to the CloudTrail logs.
+Task 3: Create a CloudWatch Alarm Based on a Metric Filter
+Applied a custom Metric Filter to the CloudWatch Log Group to identify failed login attempts.
 
 Filter Pattern:
 
+```
 { ($.eventName = ConsoleLogin) && ($.errorMessage = "Failed authentication") }
+```
 
 Metric Configuration:
 
@@ -54,30 +72,48 @@ Metric Name: ConsoleLoginFailureCount
 
 Metric Value: 1
 
-Alarm Rule (FailedLogins):
+Alarm Configuration (FailedLogins):
 
-Condition: Triggers whenever the sum of ConsoleLoginFailureCount is greater than or equal to 3 within a 5-minute evaluation period.
+Threshold Condition: ConsoleLoginFailureCount >= 3 for 1 datapoint within 5 minutes.
 
-Action: Sends an automated notification to MySNSTopic.
-Validation & Testing
-Incident Simulation: Performed multiple failed login attempts using incorrect credentials for the test IAM user test.
+Notification Action: Send message to MySNSTopic upon transitioning to the ALARM state.
 
-Data Collection & Visualization: Failed events were logged by CloudTrail, streamed to CloudWatch Logs, and tracked on the ConsoleLoginFailureCount metric graph.
+### Task 4: Validation & Incident Simulation
 
-Alarm Triggering: The alarm state transitioned from OK to ALARM, invoking the SNS notification.
+* **Testing:** Simulated unauthorized access by attempting multiple console logins with incorrect credentials using a test IAM user.
+* **Data Processing:** CloudTrail captured the failed login events, streamed them to CloudWatch Logs, and updated the `ConsoleLoginFailureCount` metric.
 
-Alert Delivery: Verified the receipt of an alert email containing critical event details, including AWS Account ID, Region, Timestamp, and Threshold state.
+![CloudWatch Metric](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/metrics.png?raw=true)
+
+* **Alarm Triggering:** The alarm state shifted from `OK` / `INSUFFICIENT_DATA` to `ALARM` after crossing the defined threshold (`>= 3` failed logins in 5 minutes).
+
+![Alarms Overview](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/alarms.png?raw=true)
+
+* **Alarm Evaluation & Execution Verification:** The detailed view confirms the condition logic, while the history log verifies that the automated action to trigger SNS executed successfully.
+
+| Alarm Details | Execution History |
+| :---: | :---: |
+| ![Alarm Details](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/FailedLogins%20-%20details.png?raw=true) | ![Alarm History](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/FailedLogins%20-%20history.png?raw=true) |
+
+* **Alert Delivery:** Verified the receipt of an automated email notification containing alarm context, AWS Account ID, Region, and timestamp details.
+
+![SNS Email Alert](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/sns%20-%20email.png?raw=true)
 
 ## Forensic Analysis with CloudWatch Logs Insights
-Following the alarm notification, an investigation was conducted on the log data to determine the origin and impact of the failed login attempts.
+After receiving the alarm notification, an interactive investigation was conducted in CloudWatch Logs Insights to analyze the underlying log events and identify the source of the failed attempts.
 
-Query Executed:
+Query Executed (SQL):
 
+```
 filter eventSource="signin.amazonaws.com" and eventName="ConsoleLogin" and responseElements.ConsoleLogin="Failure"
 | stats count(*) as Total_Count by sourceIPAddress as Source_IP, errorMessage as Reason, awsRegion as AWS_Region, userIdentity.arn as IAM_Arn
+```
 
-Result: The query successfully aggregated and displayed the number of failed attempts grouped by source IP address, failure reason, AWS region, and targeted IAM user ARN.
+Analysis Results:  
 
+Aggregated Insights: The query isolated failed console authentication events and grouped them by source IP address, failure reason, AWS region, and targeted IAM user ARN.
+
+Incident Attribution: Confirmed the exact IP address and user identity associated with the security event, enabling targeted incident response and rule validation.
 ## Key Takeaways
 Reduced MTTD (Mean Time to Detect): Automated detection of critical security events without relying on manual log reviews.
 
