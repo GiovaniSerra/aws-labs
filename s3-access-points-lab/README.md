@@ -263,7 +263,103 @@ Executing aws s3api get-object --bucket $DentalAp --key records_AVTR-...pdf usin
 
 ---
 
-Lessons Learned & Best Practices
+## Cost Analysis & FinOps Considerations
+
+Designing cloud architecture requires balancing security, operational efficiency, and financial optimization. Below is a cost breakdown of the services used in this lab setup based on standard AWS pricing:
+
+### Service Cost Breakdown
+
+| AWS Component | Pricing Model | Estimated Cost | Notes & FinOps Insights |
+| :--- | :--- | :--- | :--- |
+| **Amazon S3 Access Points** | **Free** | **$0.00** | There is **no additional charge** for creating or using S3 Access Points. You only pay for standard S3 requests and storage. |
+| **Gateway VPC Endpoint** | **Free** | **$0.00** | Gateway Endpoints for S3 incur **no hourly fees and no data transfer charges**, making them ideal for high-throughput in-region S3 traffic. |
+| **Amazon S3 Standard Storage** | Per GB / Month | ~$0.023 / GB | Standard S3 storage rates apply for medical PDF records and image files. |
+| **S3 API Requests** | Per 1,000 requests | Negligible (`PUT`, `GET`, `LIST`) | Standard S3 API pricing applies (`s3:GetObject`, `s3:ListBucket`). Access Points do not add per-request overhead. |
+
+---
+
+## Infrastructure as Code with AWS CloudFormation
+
+To improve repeatability, consistency, and alignment with Infrastructure as Code (IaC) best practices, the core infrastructure components of this lab—such as S3 Access Points, Access Point Policies, and Gateway VPC Endpoints—can be provisioned using AWS CloudFormation.
+
+### Example CloudFormation Resources
+
+#### 1. Provisioning an S3 Access Point and Access Point Policy
+The following resources provision an S3 Access Point restricted to a specific VPC together with a dedicated Access Point policy that enforces Attribute-Based Access Control (ABAC) using Amazon S3 object tags:
+
+```yaml
+Resources:
+  DentalAccessPoint:
+    Type: AWS::S3::AccessPoint
+    Properties:
+      Name: dental-ap
+      Bucket: !Ref MedicalRecordsBucket
+      VpcConfiguration:
+        VpcId: !Ref LabVpcId
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+
+  DentalAccessPointPolicy:
+    Type: AWS::S3::AccessPointPolicy
+    Properties:
+      AccessPointName: !Ref DentalAccessPoint
+      Policy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:user/DentalUser"
+            Action: "s3:ListBucket"
+            Resource: !Sub "arn:aws:s3:${AWS::Region}:${AWS::AccountId}:accesspoint/dental-ap"
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:user/DentalUser"
+            Action: "s3:GetObject"
+            Resource: !Sub "arn:aws:s3:${AWS::Region}:${AWS::AccountId}:accesspoint/dental-ap/object/*"
+            Condition:
+              StringEquals:
+                "s3:ExistingObjectTag/recordtype": "dental"
+```
+
+Provisioning the S3 Gateway VPC Endpoint
+Resource definition for the private Gateway Endpoint attached to the VPC private route table:
+
+```yaml
+S3GatewayEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref LabVpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+```
+Note
+
+These snippets illustrate the core CloudFormation resources used in this lab. A complete deployment would typically include the S3 bucket, bucket policy, IAM identities, and supporting networking resources.
+
+### Benefits of Infrastructure as Code
+Repeatable Deployments: Recreate the same infrastructure consistently across development, staging, and production environments.
+
+Configuration Drift Prevention: Infrastructure definitions reduce the risk of manual configuration changes.
+
+Version Control: Infrastructure changes can be reviewed, audited, and tracked through pull requests.
+
+Scalability: Standardized templates simplify deployments across multiple AWS accounts and Regions.
+
+---
+
+## Key Financial Takeaways
+
+* **Zero-Cost Access Control Boundary**: By shifting access governance from monolithic bucket policies to S3 Access Points, you achieve granular ABAC security without increasing AWS infrastructure costs.
+* **Significant Savings via Gateway VPC Endpoint**: Choosing a Gateway VPC Endpoint over an Interface VPC Endpoint (AWS PrivateLink) saved **$0.01 per GB** in data processing fees plus **~$7.20/month per Availability Zone** in endpoint hourly charges.
+
+---
+
+## Lessons Learned & Best Practices
 Decoupled Access Governance: S3 Access Points eliminate the complexity of maintaining massive, monolithic S3 bucket policies by shifting permission governance to endpoint-specific policies.
 
 Perimeter Security: Requiring access through a Gateway VPC Endpoint ensures data access remains strictly within private cloud network boundaries without incurring additional network costs.
