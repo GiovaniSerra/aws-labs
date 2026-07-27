@@ -160,7 +160,7 @@ Connected to the lab EC2 instance via SSM Session Manager and validated environm
 #### 2. Access Denial on Default Role Permissions
 Without attached IAM identity permissions, requests from the instance role are blocked.
 
-![Access Denied for Instance Role](./images/s3_list_access_denied_2.png)
+![Access Denied for Instance Role](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/s3%20list%20-%20access%20denied.png)
 
 > Calling `s3:ListBucket` from the EC2 instance role (`InstanceIamRole`) returns `AccessDenied` because no attached identity-based policy allows access.
 
@@ -173,7 +173,7 @@ Direct bucket access under `dental_user` profile fails as expected due to bucket
 
 Listing objects via `dental-ap` succeeds:
 
-![List Objects via Dental Access Point](./images/ls_obj_2.png)
+![List Objects via Dental Access Point](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/ls%20obj.png)
 
 > Executing `aws s3api list-objects-v2 --bucket $DentalAp --profile dental_user` successfully returns the object key inventory.
 
@@ -187,7 +187,7 @@ Attempting to list objects across an unauthorized Access Point is blocked.
 #### 5. ABAC Tag Enforcement & File Retrieval (`s3:GetObject`)
 Downloading an authorized dental record via `dental-ap`:
 
-![GetObject Response](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/get%20obj%20-%20acc%20denied%20-%20not%20auth%20-%20profile%20dental_user.pngg)
+![GetObject Response](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/get%20obj%20-%20acc%20denied%20-%20not%20auth%20-%20profile%20dental_user.png)
 
 > Executing `aws s3api get-object --bucket $DentalAp --key records_AVTR-...pdf` using `--profile dental_user`. The request succeeds with HTTP 200, returning object metadata (`ContentLength`, `AES256` encryption).
 
