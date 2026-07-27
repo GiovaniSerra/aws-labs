@@ -11,42 +11,41 @@ Using S3 Access Points, bucket policies, and VPC endpoints, access control was d
 
 ## Architecture Diagram
 
+![Architecture Diagram](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/ar.jfif)
 
+---
 
 ## Key Objectives
-Explain the role of Amazon S3 Access Points in scaling access management.
+* **Scale Access Management**: Explain and implement Amazon S3 Access Points to decentralize permission management.
+* **Implement ABAC Rules**: Create custom Access Point policies using Attribute-Based Access Control (`s3:ExistingObjectTag`).
+* **Enforce Network Isolation**: Restrict S3 traffic through a Gateway VPC Endpoint for private cloud network isolation.
+* **Delegate Access Control**: Configure an S3 Bucket Policy to delegate access control directly to S3 Access Points.
 
-Implement custom Access Point policies with Attribute-Based Access Control (ABAC) using s3:ExistingObjectTag.
-
-Restrict S3 traffic through a Gateway VPC Endpoint for private network isolation.
-
-Configure an S3 Bucket Policy to delegate access control directly to S3 Access Points.
+---
 
 ## Step-by-Step Implementation
-Task 1: Environment Assessment
-IAM Identities: Inspected DentalUser and XrayUser. Neither identity had direct attached policies or group memberships.
 
-S3 Data Classification: Inspected the pre-populated S3 bucket (medical-records-*). Objects are classified using tags:
+### Task 1: Environment Assessment
+* **IAM Identities**: Inspected `DentalUser` and `XrayUser`. Neither identity had direct attached policies or group memberships.
+* **S3 Data Classification**: Inspected the pre-populated S3 bucket (`medical-records-*`). Objects are classified using tags:
+  * Dental files: `recordtype = dental`
+  * X-ray files: `recordtype = xray`
+* **Bucket Protection**: Confirmed that Block Public Access is fully active across the bucket.
 
-Dental files: recordtype = dental
+### Task 2: Provision S3 Access Points
+Created two dedicated S3 Access Points attached to the Lab VPC to enforce fine-grained access control based on object tags (`recordtype`).
 
-X-ray files: recordtype = xray
+#### 1. Dental Access Point (`dental-ap`)
+Configured an S3 Access Point allowing `DentalUser` to list and retrieve objects tagged with `recordtype: dental`.
 
-Bucket Protection: Confirmed that Block Public Access is fully active across the bucket.
+* **Name**: `dental-ap`
+* **Network Origin**: Virtual Private Cloud (VPC)
+* **VPC ID**: `<LAB_VPC_ID>`
+* **Block Public Access**: Enabled
 
-Task 2: Provision S3 Access Points
-1. Dental Access Point (dental-ap)
-Configured an S3 Access Point attached to the VPC with an inline policy granting DentalUser permission to list and retrieve objects tagged with recordtype: dental.
+![Dental Access Point Policy](./images/ap_policy_dental_ap.png)
 
-Name: dental-ap
-
-Network Origin: Virtual Private Cloud (VPC)
-
-VPC ID: <LAB_VPC_ID>
-
-Block Public Access: Enabled
-
-```JSON
+```json
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -75,15 +74,7 @@ Block Public Access: Enabled
 }
 ```
 2. X-ray Access Point (xray-ap)
-Configured a dedicated Access Point allowing XrayUser to access only objects tagged with recordtype: xray.
-
-Name: xray-ap
-
-Network Origin: Virtual Private Cloud (VPC)
-
-VPC ID: <LAB_VPC_ID>
-
-Block Public Access: Enabled
+Configured a dedicated Access Point allowing XrayUser to list and retrieve objects tagged with recordtype: xray.
 
 ```JSON
 {
@@ -113,47 +104,26 @@ Block Public Access: Enabled
     ]
 }
 ```
-Task 3: Create Gateway VPC Endpoint
-Provisioned a Gateway VPC Endpoint to route traffic from the EC2 instance inside the VPC to the S3 bucket and its access points privately using AWS PrivateLink architecture.
+Access Points Management Dashboard
+Confirmed both Access Points are active and bound exclusively to the private Virtual Private Cloud (VPC).
 
-Service: com.amazonaws.<REGION>.s3 (Gateway)
+S3 Console view of active Access Points (dental-ap and xray-ap). Both are bound to a Virtual Private Cloud (VPC) network origin, blocking external internet entry.
 
-VPC: Lab VPC
+### Task 3: Create Gateway VPC Endpoint & Network Perimeter
+Provisioned a Gateway VPC Endpoint (`vpce-*`) to route S3 traffic internally within the AWS network without exposing data to the public internet.
 
-Route Table: Lab Subnet (Public)
+![VPC Gateway Endpoint Details](./images/vpc_2.png)
 
-```JSON
-{
-    "Version": "2008-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Principal": "*",
-            "Action": "s3:ListBucket",
-            "Resource": [
-                "arn:aws:s3:::<BUCKET_NAME>",
-                "arn:aws:s3:<REGION>:<ACCOUNT_ID>:accesspoint/dental-ap",
-                "arn:aws:s3:<REGION>:<ACCOUNT_ID>:accesspoint/xray-ap"
-            ]
-        },
-        {
-            "Effect": "Allow",
-            "Principal": "*",
-            "Action": "s3:GetObject",
-            "Resource": [
-                "arn:aws:s3:::<BUCKET_NAME>/*",
-                "arn:aws:s3:<REGION>:<ACCOUNT_ID>:accesspoint/dental-ap/object/*",
-                "arn:aws:s3:<REGION>:<ACCOUNT_ID>:accesspoint/xray-ap/object/*"
-            ]
-        }
-    ]
-}
-```
+> Active Gateway VPC Endpoint configured in the AWS VPC Console, ensuring all S3 calls remain within the private network perimeter.
 
-Task 4: Delegate Bucket Access Control
-Applied a bucket policy to medical-records-* delegating control directly to any Access Point owned by the AWS Account ID (s3:DataAccessPointAccount).
+---
 
-```JSON
+### Task 4: Delegate Bucket Access Control
+Applied a resource policy to the primary S3 bucket (`medical-records-*`), delegating control directly to any Access Point owned by the AWS Account ID via `s3:DataAccessPointAccount`.
+
+![S3 Bucket Policy Console View](./images/s3_policy_2.png)
+
+```json
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -176,65 +146,54 @@ Applied a bucket policy to medical-records-* delegating control directly to any 
     ]
 }
 ```
-Task 5: Testing & Validation via AWS CLI
-Connected to the lab EC2 instance using AWS Systems Manager (SSM) Session Manager.
+### Task 5: Testing & Validation via AWS CLI
+Connected to the lab EC2 instance via SSM Session Manager and validated environment variables and policy behavior.
 
-1. Environmental Variables Setup
+#### 1. Environment Variable Setup & Local Verification
 
-```Bash
-bucket="<BUCKET_NAME>"
-DentalAp="arn:aws:s3:<REGION>:<ACCOUNT_ID>:accesspoint/dental-ap"
-XrayAp="arn:aws:s3:<REGION>:<ACCOUNT_ID>:accesspoint/xray-ap"
-```
+![Local File Listing](./images/ls_2.png)
 
-2. Direct Bucket Access vs. Access Point Access
-Direct bucket requests under dental_user profile fail as expected due to bucket delegation:
+![Terminal Session and Environment Variables](./images/cd.png)
 
-```Bash
-aws s3api list-objects-v2 --bucket $bucket --profile dental_user
-```
+> Setting environment variables (`$bucket`, `$DentalAp`, `$XrayAp`) and executing `aws s3api list-objects-v2` with default instance credentials to inspect raw bucket contents.
 
-# Output: An error occurred (AccessDenied)
-Listing objects via dental-ap succeeds:
+#### 2. Access Denial on Default Role Permissions
+Without attached IAM identity permissions, requests from the instance role are blocked.
 
-```Bash
-aws s3api list-objects-v2 --bucket $DentalAp --profile dental_user
-# Output: Successfully lists objects
-```
+![Access Denied for Instance Role](./images/s3_list_access_denied_2.png)
 
-3. ABAC Tag Enforcement
-Downloading a dental record via dental-ap succeeds:
+> Calling `s3:ListBucket` from the EC2 instance role (`InstanceIamRole`) returns `AccessDenied` because no attached identity-based policy allows access.
 
-```Bash
-aws s3api get-object --bucket $DentalAp --key records_AVTR-7531421564.pdf records_AVTR-7531421564.pdf --profile dental_user
-```
+#### 3. Direct Bucket Access vs. Access Point Access
+Direct bucket access under `dental_user` profile fails as expected due to bucket delegation.
 
-# Output: HTTP 200 OK
-Attempting to download an X-ray file via dental-ap fails:
+![Direct Bucket Access Denied](./images/s3_list_obj_prof_dental_user_acc_den_2.png)
 
-```Bash
-aws s3api get-object --bucket $DentalAp --key xray_PRAM-5741336854.png xray_PRAM-5741336854.png --profile dental_user
-# Output: An error occurred (AccessDenied)
-```
+> Executing `aws s3api list-objects-v2 --bucket $bucket --profile dental_user` returns `AccessDenied`, confirming direct access is blocked.
 
-4. Cross-Endpoint Security
-XrayUser downloading an X-ray file via xray-ap succeeds:
+Listing objects via `dental-ap` succeeds:
 
-```Bash
-aws s3api get-object --bucket $XrayAp --key xray_WASD-8749317132.png xray_WASD-8749317132.png --profile xray_user
-# Output: HTTP 200 OK
-```
+![List Objects via Dental Access Point](./images/ls_obj_2.png)
 
-XrayUser querying dental-ap fails:
+> Executing `aws s3api list-objects-v2 --bucket $DentalAp --profile dental_user` successfully returns the object key inventory.
 
-```Bash
-aws s3api list-objects-v2 --bucket $DentalAp --profile xray_user
-# Output: An error occurred (AccessDenied)
-```
+#### 4. Cross-Endpoint Security Enforcement
+Attempting to list objects across an unauthorized Access Point is blocked.
+
+![Dental User Blocked on Xray Access Point](./images/ls_obj_dental_user_not_auth.png)
+
+> Executing `aws s3api list-objects-v2 --bucket $XrayAp --profile dental_user` returns `AccessDenied`, confirming endpoint isolation.
+
+#### 5. ABAC Tag Enforcement & File Retrieval (`s3:GetObject`)
+Downloading an authorized dental record via `dental-ap`:
+
+![Successful GetObject Response](./images/get_obj_acc_denied_not_auth_profile_dental_user.png)
+
+> Executing `aws s3api get-object --bucket $DentalAp --key records_AVTR-...pdf` using `--profile dental_user`. The request succeeds with HTTP 200, returning object metadata (`ContentLength`, `AES256` encryption).
+
+---
 
 ## Lessons Learned & Best Practices
-Decoupled Access Governance: S3 Access Points eliminate the complexity of maintaining massive, monolithic S3 bucket policies by shifting permission governance to endpoint-specific policies.
-
-Perimeter Security: Requiring access through a VPC Endpoint ensures data access remains strictly within private cloud network boundaries.
-
-Dynamic ABAC Control: Leveraging s3:ExistingObjectTag enables fine-grained identity boundaries based on object attributes without changing baseline permissions.
+* **Decoupled Access Governance**: S3 Access Points eliminate the complexity of maintaining massive, monolithic S3 bucket policies by shifting permission governance to endpoint-specific policies.
+* **Perimeter Security**: Requiring access through a Gateway VPC Endpoint ensures data access remains strictly within private cloud network boundaries.
+* **Dynamic ABAC Control**: Leveraging `s3:ExistingObjectTag` enables fine-grained identity boundaries based on object attributes without changing baseline permissions.
