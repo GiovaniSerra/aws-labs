@@ -185,48 +185,55 @@ Connected to the lab EC2 instance using AWS Systems Manager (SSM) Session Manage
 bucket="<BUCKET_NAME>"
 DentalAp="arn:aws:s3:<REGION>:<ACCOUNT_ID>:accesspoint/dental-ap"
 XrayAp="arn:aws:s3:<REGION>:<ACCOUNT_ID>:accesspoint/xray-ap"
+```
+
 2. Direct Bucket Access vs. Access Point Access
 Direct bucket requests under dental_user profile fail as expected due to bucket delegation:
-```
 
 ```Bash
 aws s3api list-objects-v2 --bucket $bucket --profile dental_user
+```
+
 # Output: An error occurred (AccessDenied)
 Listing objects via dental-ap succeeds:
-```
 
 ```Bash
 aws s3api list-objects-v2 --bucket $DentalAp --profile dental_user
 # Output: Successfully lists objects
+```
+
 3. ABAC Tag Enforcement
 Downloading a dental record via dental-ap succeeds:
-```
 
 ```Bash
 aws s3api get-object --bucket $DentalAp --key records_AVTR-7531421564.pdf records_AVTR-7531421564.pdf --profile dental_user
+```
+
 # Output: HTTP 200 OK
 Attempting to download an X-ray file via dental-ap fails:
-```
 
 ```Bash
 aws s3api get-object --bucket $DentalAp --key xray_PRAM-5741336854.png xray_PRAM-5741336854.png --profile dental_user
 # Output: An error occurred (AccessDenied)
+```
+
 4. Cross-Endpoint Security
 XrayUser downloading an X-ray file via xray-ap succeeds:
-```
 
 ```Bash
 aws s3api get-object --bucket $XrayAp --key xray_WASD-8749317132.png xray_WASD-8749317132.png --profile xray_user
 # Output: HTTP 200 OK
-XrayUser querying dental-ap fails:
 ```
+
+XrayUser querying dental-ap fails:
 
 ```Bash
 aws s3api list-objects-v2 --bucket $DentalAp --profile xray_user
 # Output: An error occurred (AccessDenied)
-Lessons Learned & Best Practices
-Decoupled Access Governance: S3 Access Points eliminate the complexity of maintaining massive, monolithic S3 bucket policies by shifting permission governance to endpoint-specific policies.
 ```
+
+## Lessons Learned & Best Practices
+Decoupled Access Governance: S3 Access Points eliminate the complexity of maintaining massive, monolithic S3 bucket policies by shifting permission governance to endpoint-specific policies.
 
 Perimeter Security: Requiring access through a VPC Endpoint ensures data access remains strictly within private cloud network boundaries.
 
