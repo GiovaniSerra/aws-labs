@@ -43,7 +43,7 @@ Configured an S3 Access Point allowing `DentalUser` to list and retrieve objects
 * **VPC ID**: `<LAB_VPC_ID>`
 * **Block Public Access**: Enabled
 
-![Dental Access Point Policy](./images/ap_policy_dental_ap.png)
+![Dental Access Point Policy](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/ap%20policy%20-%20dental-ap.png)
 
 ```json
 {
@@ -112,7 +112,7 @@ S3 Console view of active Access Points (dental-ap and xray-ap). Both are bound 
 ### Task 3: Create Gateway VPC Endpoint & Network Perimeter
 Provisioned a Gateway VPC Endpoint (`vpce-*`) to route S3 traffic internally within the AWS network without exposing data to the public internet.
 
-![VPC Gateway Endpoint Details](./images/vpc_2.png)
+![VPC Gateway Endpoint Details](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/vpc.png)
 
 > Active Gateway VPC Endpoint configured in the AWS VPC Console, ensuring all S3 calls remain within the private network perimeter.
 
@@ -121,7 +121,7 @@ Provisioned a Gateway VPC Endpoint (`vpce-*`) to route S3 traffic internally wit
 ### Task 4: Delegate Bucket Access Control
 Applied a resource policy to the primary S3 bucket (`medical-records-*`), delegating control directly to any Access Point owned by the AWS Account ID via `s3:DataAccessPointAccount`.
 
-![S3 Bucket Policy Console View](./images/s3_policy_2.png)
+![S3 Bucket Policy Console View](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/s3%20-%20policy.png)
 
 ```json
 {
@@ -151,9 +151,9 @@ Connected to the lab EC2 instance via SSM Session Manager and validated environm
 
 #### 1. Environment Variable Setup & Local Verification
 
-![Local File Listing](./images/ls_2.png)
+![Local File Listing](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/ls.png)
 
-![Terminal Session and Environment Variables](./images/cd.png)
+![Terminal Session and Environment Variables](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/cd%20.png)
 
 > Setting environment variables (`$bucket`, `$DentalAp`, `$XrayAp`) and executing `aws s3api list-objects-v2` with default instance credentials to inspect raw bucket contents.
 
@@ -167,7 +167,7 @@ Without attached IAM identity permissions, requests from the instance role are b
 #### 3. Direct Bucket Access vs. Access Point Access
 Direct bucket access under `dental_user` profile fails as expected due to bucket delegation.
 
-![Direct Bucket Access Denied](./images/s3_list_obj_prof_dental_user_acc_den_2.png)
+![Direct Bucket Access Denied](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/s3%20list%20obj%20-%20prof%20dental_user%20-%20acc%20den.png)
 
 > Executing `aws s3api list-objects-v2 --bucket $bucket --profile dental_user` returns `AccessDenied`, confirming direct access is blocked.
 
@@ -180,14 +180,14 @@ Listing objects via `dental-ap` succeeds:
 #### 4. Cross-Endpoint Security Enforcement
 Attempting to list objects across an unauthorized Access Point is blocked.
 
-![Dental User Blocked on Xray Access Point](./images/ls_obj_dental_user_not_auth.png)
+![Dental User Blocked on Xray Access Point](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/ls%20obj%20-%20dental_user%20-%20not%20auth.png)
 
 > Executing `aws s3api list-objects-v2 --bucket $XrayAp --profile dental_user` returns `AccessDenied`, confirming endpoint isolation.
 
 #### 5. ABAC Tag Enforcement & File Retrieval (`s3:GetObject`)
 Downloading an authorized dental record via `dental-ap`:
 
-![Successful GetObject Response](./images/get_obj_acc_denied_not_auth_profile_dental_user.png)
+![GetObject Response](https://github.com/GiovaniSerra/aws-labs/blob/main/s3-access-points-lab/images/get%20obj%20-%20acc%20denied%20-%20not%20auth%20-%20profile%20dental_user.pngg)
 
 > Executing `aws s3api get-object --bucket $DentalAp --key records_AVTR-...pdf` using `--profile dental_user`. The request succeeds with HTTP 200, returning object metadata (`ContentLength`, `AES256` encryption).
 
