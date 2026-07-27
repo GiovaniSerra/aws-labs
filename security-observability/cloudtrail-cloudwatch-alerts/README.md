@@ -14,7 +14,7 @@ The solution also covers incident investigation and digital forensics using stru
 
 ## Architecture Diagram
 
-![Architecture Diagram](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/ar.jpg?raw=true)
+![Architecture Diagram](./ar.jpg?raw=true)
 
 ### Workflow
 1. **User Authentication Attempt:** A user attempts to log in to the AWS Management Console with invalid credentials.
@@ -45,7 +45,7 @@ In cloud security operations, understanding delivery SLAs prevents false assumpt
 
 ## Infrastructure as Code (IaC) Deployment
 
-This entire security monitoring architecture can be automatically provisioned using the included **AWS CloudFormation** template [template.yaml](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/template.yaml).
+This entire security monitoring architecture can be automatically provisioned using the included **AWS CloudFormation** template [template.yaml](./template.yaml).
 
 ### Deployment via AWS CLI
 
@@ -101,21 +101,21 @@ Notification Action: Send message to MySNSTopic upon transitioning to the ALARM 
 * **Testing:** Simulated unauthorized access by attempting multiple console logins with incorrect credentials using a test IAM user.
 * **Data Processing:** CloudTrail captured the failed login events, streamed them to CloudWatch Logs, and updated the `ConsoleLoginFailureCount` metric.
 
-![CloudWatch Metric](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/metrics.png?raw=true)
+![CloudWatch Metric](./metrics.png?raw=true)
 
 * **Alarm Triggering:** The alarm state shifted from `OK` / `INSUFFICIENT_DATA` to `ALARM` after crossing the defined threshold (`>= 3` failed logins in 5 minutes).
 
-![Alarms Overview](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/alarms.png?raw=true)
+![Alarms Overview](./alarms.png?raw=true)
 
 * **Alarm Evaluation & Execution Verification:** The detailed view confirms the condition logic, while the history log verifies that the automated action to trigger SNS executed successfully.
 
 | Alarm Details | Execution History |
 | :---: | :---: |
-| ![Alarm Details](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/FailedLogins%20-%20details.png?raw=true) | ![Alarm History](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/FailedLogins%20-%20history.png?raw=true) |
+| ![Alarm Details](./FailedLogins%20-%20details.png?raw=true) | ![Alarm History](./FailedLogins%20-%20history.png?raw=true) |
 
 * **Alert Delivery:** Verified the receipt of an automated email notification containing alarm context, AWS Account ID, Region, and timestamp details.
 
-![SNS Email Alert](https://github.com/GiovaniSerra/aws-labs/blob/main/security-observability/cloudtrail-cloudwatch-alerts/sns%20-%20email.png?raw=true)
+![SNS Email Alert](./sns%20-%20email.png?raw=true)
 
 ## Forensic Analysis with CloudWatch Logs Insights
 After receiving the alarm notification, an interactive investigation was conducted in CloudWatch Logs Insights to analyze the underlying log events and identify the source of the failed attempts.
