@@ -86,8 +86,6 @@ Envelope Fields Breakdown:
 
 ---
 
----
-
 ## Deployment & Verification Screenshots
 
 ### 1. Compute Layer (AWS Lambda)
@@ -123,7 +121,7 @@ Envelope Fields Breakdown:
 ### 3. API Ingestion & Real-Time Gateway (Amazon API Gateway)
 - **APIs Overview**: HTTP API for RESTful order entry and WebSocket API for persistent client connections.
   
-  ![API Gateway APIs](./images/api%20gatew%20-%20apis.png)
+  ![API Gateway APIs](./images/api_gatew_apis.png)
 
 - **Direct EventBridge Integration**: Route `POST /` mapped directly to EventBridge `PutEvents` action without intermediary compute code.
   
@@ -131,19 +129,18 @@ Envelope Fields Breakdown:
 
 - **WebSocket Route Setup**: Route `$connect` mapped directly to the `websocket_connect` Lambda function.
   
-  ![WebSocket Connect Route](./images/websocket_connect.png)
+  ![WebSocket Connect Route](https://github.com/GiovaniSerra/aws-labs/blob/main/aws-event-driven-architecture/images/websocket_connect.png)
 
 - **CORS Configuration**: Cross-Origin Resource Sharing enabled for frontend client access.
   
-  ![API Gateway CORS](./images/lab_http_api%20-%20cors.png)
+  ![API Gateway CORS](https://github.com/GiovaniSerra/aws-labs/blob/main/aws-event-driven-architecture/images/lab_http_api%20-%20cors.png)
 
-  ---
+---
 
 ### 4. End-to-End Application Testing
-- **Real-Time Order Flow**: Web application connecting to the WebSocket API, submitting an HTTP POST order, and receiving live status updates (`make_pizza` -> `cook_pizza` -> `deliver_pizza`) as events are published and processed asynchronously.
+- **Real-Time Order Flow**: Web application connecting to the WebSocket API, submitting an HTTP POST order, and receiving live status updates (`make_pizza` -> `cook_pizza` -> `deliver_pizza` -> `delivered`) as events are published and processed asynchronously.
 
   ![End-to-End Web App Test](./images/test.png)
-
   ---
 
 ## Cost Analysis & FinOps Considerations
@@ -163,21 +160,34 @@ This architecture runs 100% on a serverless, pay-per-use model and fits well wit
 
 ## Infrastructure as Code with AWS CloudFormation
 
-To deploy this architecture programmatically, use the template snippet below:
+This architecture is fully automated and can be deployed programmatically using AWS CloudFormation.
 
-```yaml
+The complete, production-ready template is available in [`./template.yaml`](https://github.com/GiovaniSerra/aws-labs/tree/main/aws-event-driven-architecture/templates). It provisions all required resources, including DynamoDB (PITR & SSE enabled), EventBridge custom bus with DLQ and retry policies, IAM roles with least-privilege scoping, Python 3.12 Lambdas, and API Gateway (HTTP & WebSocket APIs).
+
+### Quick Deployment via AWS CLI
+
+```bash
+# 1. Validate template syntax
+aws cloudformation validate-template --template-body file://infrastructure/template.yaml
+
+# 2. Deploy the stack
+aws cloudformation deploy \
+  --template-file infrastructure/template.yaml \
+  --stack-name aws-event-driven-architecture-stack \
+  --capabilities CAPABILITY_IAM
+
+# 3. Retrieve endpoint URLs for testing
+aws cloudformation describe-stacks \
+  --stack-name aws-event-driven-architecture-stack \
+  --query "Stacks[0].Outputs"
 
 ```
-
----
 
 ## Key Financial Takeaways
 
 - **Zero Idle Cost**: No servers, load balancers, or containers running when no orders are being placed.
 - **Direct Service Integration**: Integrating API Gateway directly with EventBridge eliminates an intermediate Lambda function, cutting request volume costs by up to 50% on API ingestion.
 - **Scale-to-Zero Efficiency**: Ideal for applications with unpredictable burst traffic, automatically scaling compute capacity during peak hours without over-provisioning.
-
----
 
 ---
 
