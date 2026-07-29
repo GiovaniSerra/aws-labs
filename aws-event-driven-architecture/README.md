@@ -53,6 +53,59 @@ This project demonstrates a fully serverless, event-driven architecture built on
 
 ---
 
+---
+
+## Deployment & Verification Screenshots
+
+### 1. Compute Layer (AWS Lambda)
+- **Functions Overview**: All 5 microservices deployed using Python 3.12 runtime.
+  
+  ![Lambda Functions](./images/functions.png)
+
+- **Sequential Processing Lambdas**: Configuration and environment variables (`EVENT_BUS=lab_event_bus`) for `make_pizza`, `cook_pizza`, and `deliver_pizza`.
+  
+  | `make_pizza` | `cook_pizza` | `deliver_pizza` |
+  | :---: | :---: | :---: |
+  | ![make_pizza](./images/make_pizza.png) | ![cook_pizza](./images/cook_pizza.png) | ![deliver_pizza](./images/deliver_pizza.png) |
+
+- **WebSocket Session Management Lambdas**: `websocket_connect` storing sessions in DynamoDB, and `receive_events` configured with `APIGW_ENDPOINT` to broadcast events back to clients.
+  
+  | `websocket_connect` | `receive_events` |
+  | :---: | :---: |
+  | ![websocket_connect](./images/websocket_connect.png) | ![receive_events](./images/receive_events.png) |
+
+---
+
+### 2. Event Routing (Amazon EventBridge)
+- **Rules on Custom Event Bus**: Active rules matching pattern attributes on `lab_event_bus`.
+  
+  ![EventBridge Rules](./images/event_buses_rules.png)
+
+- **Event Bus Metrics & Monitoring**: Metric graphs demonstrating successful event publishing, latency, and function invocations.
+  
+  ![EventBridge Monitoring](./images/event_buses_monitoring.png)
+
+---
+
+### 3. API Ingestion & Real-Time Gateway (Amazon API Gateway)
+- **APIs Overview**: HTTP API for RESTful order entry and WebSocket API for persistent client connections.
+  
+  ![API Gateway APIs](./images/api_gatew_apis.png)
+
+- **Direct EventBridge Integration**: Route `POST /` mapped directly to EventBridge `PutEvents` action without intermediary compute code.
+  
+  ![API Gateway Integrations](.images/integrations.png)
+
+- **WebSocket Route Setup**: Route `$connect` mapped directly to the `websocket_connect` Lambda function.
+  
+  ![WebSocket Connect Route](./images/routes_lab_websocket_api_connect.png)
+
+- **CORS Configuration**: Cross-Origin Resource Sharing enabled for frontend client access.
+  
+  ![API Gateway CORS](./images/lab_http_api_cors.png)
+
+  ---
+
 ## Cost Analysis & FinOps Considerations
 
 A key advantage of this architecture is its purely serverless pay-per-use model:
