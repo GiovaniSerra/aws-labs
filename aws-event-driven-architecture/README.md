@@ -167,9 +167,9 @@ This architecture runs 100% on a serverless, pay-per-use model and fits well wit
 
 ## Infrastructure as Code with AWS CloudFormation
 
-This architecture is fully automated and can be deployed programmatically using AWS CloudFormation.
+This lab includes an automated deployment template designed to easily reproduce the event-driven environment using AWS CloudFormation.
 
-The complete, production-ready template is available in [`./template.yaml`](https://github.com/GiovaniSerra/aws-labs/tree/main/aws-event-driven-architecture/templates). It provisions all required resources, including DynamoDB (PITR & SSE enabled), EventBridge custom bus with DLQ and retry policies, IAM roles with least-privilege scoping, Python 3.12 Lambdas, and API Gateway (HTTP & WebSocket APIs).
+The template [`./template.yaml`](https://github.com/GiovaniSerra/aws-labs/tree/main/aws-event-driven-architecture/templates). provisions all core lab resources, including DynamoDB session mapping, an EventBridge custom bus with rules, IAM roles with scoped permissions, Python 3.12 Lambdas, and API Gateway (HTTP & WebSocket APIs).
 
 ### Quick Deployment via AWS CLI
 
@@ -190,11 +190,25 @@ aws cloudformation describe-stacks \
 
 ```
 
-## Key Financial Takeaways
+## Cost Analysis & FinOps Considerations
 
-- **Zero Idle Cost**: No servers, load balancers, or containers running when no orders are being placed.
-- **Direct Service Integration**: Integrating API Gateway directly with EventBridge eliminates an intermediate Lambda function, cutting request volume costs by up to 50% on API ingestion.
-- **Scale-to-Zero Efficiency**: Ideal for applications with unpredictable burst traffic, automatically scaling compute capacity during peak hours without over-provisioning.
+> *Note: Pricing shown is based on the AWS pricing model available at the time this lab was created and may change over time.*
+
+Estimated Cost to Reproduce: ~$0.00 USD
+This architecture runs 100% on a serverless, pay-per-use model and fits well within the AWS Free Tier:
+
+* **Amazon API Gateway:**
+  * HTTP API: $1.00 per million requests (First 1M free/month).
+  * WebSocket API: $1.00 per million messages + connection minutes.
+* **Amazon EventBridge:** $1.00 per million custom events published (First 1M free/month).
+* **AWS Lambda:** Charged per request volume and duration (GB-seconds), covered by the 1M free requests/month.
+* **Amazon DynamoDB (On-Demand):** Costs are minimal for this lab due to the very small storage footprint and low request volume.
+
+### Key Financial Takeaways
+
+* **Zero Idle Cost:** No servers, load balancers, or containers running when no orders are being placed.
+* **Direct Service Integration:** Integrating API Gateway directly with EventBridge eliminates an intermediate Lambda function, reducing operational complexity and request costs.
+* **Scale-to-Zero Efficiency:** Ideal for applications with unpredictable burst traffic, automatically scaling compute capacity during peak hours without over-provisioning.
 
 ---
 
@@ -211,8 +225,34 @@ While this lab demonstrates a happy-path workflow, production event-driven archi
 
 ## Lessons Learned & Best Practices
 
-- **Loose Coupling**: EventBridge acts as a buffer, ensuring producers don't need awareness of consumer implementation or availability.
-- **Environment Variable Isolation**: Decoupling configuration data from code simplifies multi-environment deployments (Dev/Staging/Prod).
-- **Fan-Out Power**: A single published event can trigger background processing and real-time UI updates simultaneously without complex orchestration code.
-- **Session Cleanup**: In production, stale WebSocket connection IDs in DynamoDB should be cleaned up upon disconnect events or via DynamoDB TTL.
+* **Loose Coupling:** EventBridge acts as a buffer, ensuring producers don't need awareness of consumer implementation or availability.
+* **Environment Variable Isolation:** Decoupling configuration data from code simplifies multi-environment deployments (Dev/Staging/Prod).
+* **Fan-Out Power:** A single published event can trigger background processing and real-time UI updates simultaneously without complex orchestration code.
+* **Session Cleanup:** In production, stale WebSocket connection IDs in DynamoDB should be cleaned up upon disconnect events or via DynamoDB TTL.
 
+This lab demonstrates how event-driven architectures improve scalability, loose coupling, and maintainability by separating producers from consumers through asynchronous event routing.
+
+
+---
+
+## Production Operational Considerations & Future Enhancements
+
+To transform this architecture from a proof-of-concept into a production-ready solution capable of handling real-world scale and operational demands, the following enhancements would be required:
+
+### 1. Full Order State Persistence (DynamoDB)
+In the current lab scope, DynamoDB is utilized solely for mapping active WebSocket sessions (`order_id` to `connection_id`). In a real-world production environment:
+* **Dedicated Orders Table**: A separate DynamoDB table would be essential to persist order state transitions (e.g., `RECEIVED`, `COOKING`, `DELIVERING`, `DELIVERED`).
+* **State Recovery & Traceability**: Persisting order status enables frontend clients to query the current state if a user reloads the browser or loses connection, preventing loss of context.
+
+### 2. Advanced Resiliency and Fault Handling
+* **Dead-Letter Queues (DLQ)**: Attach SQS dead-letter queues to EventBridge rules and Lambda targets to capture failed events after exhaustion of retry attempts.
+* **Stale Connection Cleanup**: Catch `410 GoneException` errors inside `receive_events` to automatically remove disconnected `connection_id` items from DynamoDB.
+* **Worker Idempotency**: Implement state checks against DynamoDB before processing sequential tasks (`cook_pizza`, `deliver_pizza`) to safely handle duplicate event deliveries.
+
+### 3. Operational Observability & Monitoring
+* **Distributed Tracing (AWS X-Ray)**: Enable X-Ray across API Gateway, EventBridge, and Lambda to trace end-to-end request latency and pinpoint performance bottlenecks.
+* **CloudWatch Alarms**: Set up metrics and alerts for DLQ message counts, API Gateway 5xx errors, and Lambda execution failures.
+
+---
+
+> **Note on Scope**: Because this project was designed as a hands-on lab to demonstrate core event-driven patterns, service decoupling, and direct AWS integrations, development concluded at this phase without implementing production-grade operational layers.
