@@ -121,7 +121,7 @@ Envelope Fields Breakdown:
 ### 3. API Ingestion & Real-Time Gateway (Amazon API Gateway)
 - **APIs Overview**: HTTP API for RESTful order entry and WebSocket API for persistent client connections.
   
-  ![API Gateway APIs](./images/api_gatew_apis.png)
+  ![API Gateway APIs](https://github.com/GiovaniSerra/aws-labs/blob/main/aws-event-driven-architecture/images/api%20gatew%20-%20apis.png)
 
 - **Direct EventBridge Integration**: Route `POST /` mapped directly to EventBridge `PutEvents` action without intermediary compute code.
   
