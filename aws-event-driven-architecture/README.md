@@ -63,12 +63,19 @@ Envelope Fields Breakdown:
 
 ---
 
-## Step-by-Step Implementation
-
 ### Step 1: Compute Layer Setup (AWS Lambda)
-1. Created five Lambda functions using Python 3.12 (`make_pizza`, `cook_pizza`, `deliver_pizza`, `websocket_connect`, and `receive_events`).
-2. Configured IAM execution roles for least-privilege access to EventBridge, DynamoDB, and API Gateway Management API.
-3. Defined environment variables (`EVENT_BUS`, `TABLENAME`, `APIGW_ENDPOINT`) to remove hardcoded configuration from source code.
+
+The compute layer consists of five microservices developed in Python 3.12, located in the [`lambda/`](./lambda/) directory. Each function has a single responsibility within the asynchronous pipeline:
+
+- [`lambda/make_pizza.py`](./lambda/make_pizza.py): Initiates order processing by setting the status to `cook_pizza` and publishing a new event to EventBridge.
+- [`lambda/cook_pizza.py`](./lambda/cook_pizza.py): Advances order state from cooking to `deliver_pizza` and emits the updated event back to the bus.
+- [`lambda/deliver_pizza.py`](./lambda/deliver_pizza.py): Completes the sequential workflow by emitting the final `delivered` event.
+- [`lambda/websocket_connect.py`](./lambda/websocket_connect.py): Handles the WebSocket `$connect` route, persisting session mappings (`order_id` to `connection_id`) in Amazon DynamoDB.
+- [`lambda/receive_events.py`](./lambda/receive_events.py): Broadcasts real-time state changes (`make_pizza`, `cook_pizza`, `deliver_pizza`, `delivered`) back to the client via WebSocket using API Gateway Management API.
+
+**Key Configuration Details:**
+1. Configured IAM execution roles for least-privilege access to EventBridge, DynamoDB, and API Gateway Management API.
+2. Defined environment variables (`EVENT_BUS`, `TABLENAME`, `APIGW_ENDPOINT`) to decouple infrastructure parameters from function code.
 
 ### Step 2: Event Bus & Routing Rules (Amazon EventBridge)
 1. Provisioned custom event bus `lab_event_bus`.
