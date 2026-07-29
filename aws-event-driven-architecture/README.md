@@ -143,7 +143,7 @@ Envelope Fields Breakdown:
 ### 4. End-to-End Application Testing
 - **Real-Time Order Flow**: Web application connecting to the WebSocket API, submitting an HTTP POST order, and receiving live status updates (`make_pizza` -> `cook_pizza` -> `deliver_pizza`) as events are published and processed asynchronously.
 
-  ![End-to-End Web App Test](./images/web_app_test.png)
+  ![End-to-End Web App Test](./images/test.png)
 
   ---
 
