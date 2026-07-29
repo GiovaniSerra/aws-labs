@@ -79,30 +79,30 @@ This project demonstrates a fully serverless, event-driven architecture built on
 ### 2. Event Routing (Amazon EventBridge)
 - **Rules on Custom Event Bus**: Active rules matching pattern attributes on `lab_event_bus`.
   
-  ![EventBridge Rules](./images/event_buses_rules.png)
+  ![EventBridge Rules](./images/event%20buses%20-%20rules.png)
 
 - **Event Bus Metrics & Monitoring**: Metric graphs demonstrating successful event publishing, latency, and function invocations.
   
-  ![EventBridge Monitoring](./images/event_buses_monitoring.png)
+  ![EventBridge Monitoring](./images/event%20buses%20-%20monitoring.png)
 
 ---
 
 ### 3. API Ingestion & Real-Time Gateway (Amazon API Gateway)
 - **APIs Overview**: HTTP API for RESTful order entry and WebSocket API for persistent client connections.
   
-  ![API Gateway APIs](./images/api_gatew_apis.png)
+  ![API Gateway APIs](./images/api%20gatew%20-%20apis.png)
 
 - **Direct EventBridge Integration**: Route `POST /` mapped directly to EventBridge `PutEvents` action without intermediary compute code.
   
-  ![API Gateway Integrations](.images/integrations.png)
+  ![API Gateway Integrations](./images/integrations.png)
 
 - **WebSocket Route Setup**: Route `$connect` mapped directly to the `websocket_connect` Lambda function.
   
-  ![WebSocket Connect Route](./images/routes_lab_websocket_api_connect.png)
+  ![WebSocket Connect Route](./images/websocket_connect.png)
 
 - **CORS Configuration**: Cross-Origin Resource Sharing enabled for frontend client access.
   
-  ![API Gateway CORS](./images/lab_http_api_cors.png)
+  ![API Gateway CORS](./images/lab_http_api%20-%20cors.png)
 
   ---
 
