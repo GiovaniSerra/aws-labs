@@ -1,0 +1,531 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IaC CloudFormation Template - Event-Driven Serverless Pizza Ordering System (Production Ready & Validated)'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: 'prod'
+    AllowedValues: ['dev', 'staging', 'prod']
+    Description: 'Deployment environment for tagging and resource naming'
+
+Resources:
+
+  # ===================================================================
+  # 1. DATABASE LAYER (Amazon DynamoDB with Security Best Practices)
+  # ===================================================================
+  WebSocketConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: order_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: order_id
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: "PizzaOrderingEDA"
+
+  # ===================================================================
+  # 2. EVENT BUS & RESILIENCY (Amazon EventBridge & SQS DLQ)
+  # ===================================================================
+  CustomEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub "pizza-event-bus-${Environment}"
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: "PizzaOrderingEDA"
+
+  EventBridgeDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "eventbridge-dlq-${Environment}"
+      KmsMasterKeyId: "alias/aws/sqs"
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: "PizzaOrderingEDA"
+
+  # ===================================================================
+  # 3. INGESTION LAYER - WEBSOCKET API (Declared Early for Lambda Env Vars)
+  # ===================================================================
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "websocket-api-${Environment}"
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+      Tags:
+        Environment: !Ref Environment
+
+  # ===================================================================
+  # 4. IAM ROLES (Least Privilege & Scoped Permissions)
+  # ===================================================================
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: EventBridgeAndDynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: !GetAtt CustomEventBus.Arn
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                Resource: !GetAtt WebSocketConnectionsTable.Arn
+              - Effect: Allow
+                Action:
+                  - execute-api:ManageConnections
+                Resource: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*"
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  ApiGatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ApiGatewayEventBridgePutEvents
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: !GetAtt CustomEventBus.Arn
+
+  # ===================================================================
+  # 5. COMPUTE LAYER (AWS Lambda Functions & Log Groups)
+  # ===================================================================
+  MakePizzaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          EVENT_BUS: !Ref CustomEventBus
+      Code:
+        ZipFile: |
+          import json, os, boto3
+          client = boto3.client('events')
+          def lambda_handler(event, context):
+              try:
+                  detail = event["detail"]
+                  detail["item"]["eventtype"] = "cook_pizza"
+                  response = client.put_events(Entries=[{
+                      'DetailType': 'eventtype',
+                      'Detail': json.dumps(detail),
+                      'EventBusName': os.environ.get('EVENT_BUS'),
+                      'Source': "make_pizza"
+                  }])
+                  print(response)
+              except Exception as err:
+                  print(f"Error processing make_pizza: {err}")
+                  raise err
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  CookPizzaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          EVENT_BUS: !Ref CustomEventBus
+      Code:
+        ZipFile: |
+          import json, os, boto3
+          client = boto3.client('events')
+          def lambda_handler(event, context):
+              try:
+                  detail = event["detail"]
+                  detail["item"]["eventtype"] = "deliver_pizza"
+                  response = client.put_events(Entries=[{
+                      'DetailType': 'eventtype',
+                      'Detail': json.dumps(detail),
+                      'EventBusName': os.environ.get('EVENT_BUS'),
+                      'Source': "cook_pizza"
+                  }])
+                  print(response)
+              except Exception as err:
+                  print(f"Error processing cook_pizza: {err}")
+                  raise err
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  DeliverPizzaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          EVENT_BUS: !Ref CustomEventBus
+      Code:
+        ZipFile: |
+          import json, os, boto3
+          client = boto3.client('events')
+          def lambda_handler(event, context):
+              try:
+                  detail = event["detail"]
+                  detail["item"]["eventtype"] = "delivered"
+                  response = client.put_events(Entries=[{
+                      'DetailType': 'eventtype',
+                      'Detail': json.dumps(detail),
+                      'EventBusName': os.environ.get('EVENT_BUS'),
+                      'Source': "deliver_pizza"
+                  }])
+                  print(response)
+              except Exception as err:
+                  print(f"Error processing deliver_pizza: {err}")
+                  raise err
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  WebSocketConnectFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          TABLENAME: !Ref WebSocketConnectionsTable
+      Code:
+        ZipFile: |
+          import json, os, boto3
+          dynamodb = boto3.resource('dynamodb')
+          table = dynamodb.Table(os.environ.get('TABLENAME'))
+          def lambda_handler(event, context):
+              try:
+                  query_params = event.get('queryStringParameters') or {}
+                  order_id = query_params.get('order_id')
+                  if not order_id:
+                      raise ValueError("Missing order_id in query string parameters")
+                  
+                  table.put_item(Item={
+                      'order_id': order_id,
+                      'connection_id': event["requestContext"]["connectionId"]
+                  })
+                  return {"statusCode": 200, "headers": {"Content-Type": "application/json"}}
+              except Exception as err:
+                  print(f"Error saving websocket connection: {err}")
+                  raise err
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  ReceiveEventsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Environment:
+        Variables:
+          TABLENAME: !Ref WebSocketConnectionsTable
+          APIGW_ENDPOINT: !Sub "https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/production"
+      Code:
+        ZipFile: |
+          import json, os, boto3
+          dynamodb = boto3.resource('dynamodb')
+          table = dynamodb.Table(os.environ.get('TABLENAME'))
+          management = boto3.client('apigatewaymanagementapi', endpoint_url=os.getenv('APIGW_ENDPOINT'))
+          def lambda_handler(event, context):
+              try:
+                  order_id = event["detail"]['item']['order_id']
+                  response = table.get_item(Key={'order_id': order_id})
+                  if 'Item' in response:
+                      management.post_to_connection(
+                          Data=json.dumps(event["detail"]),
+                          ConnectionId=response["Item"]["connection_id"]
+                      )
+              except Exception as err:
+                  print(f"Error broadcasting event: {err}")
+                  raise err
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Log Groups Explicitly Provisioned for FinOps (7 Days Retention)
+  MakePizzaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${MakePizzaFunction}"
+      RetentionInDays: 7
+
+  CookPizzaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${CookPizzaFunction}"
+      RetentionInDays: 7
+
+  DeliverPizzaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${DeliverPizzaFunction}"
+      RetentionInDays: 7
+
+  WebSocketConnectLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${WebSocketConnectFunction}"
+      RetentionInDays: 7
+
+  ReceiveEventsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ReceiveEventsFunction}"
+      RetentionInDays: 7
+
+  # ===================================================================
+  # 6. EVENTBRIDGE RULES
+  # ===================================================================
+  MakePizzaRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref CustomEventBus
+      EventPattern:
+        source: ["lab_http_api"]
+        detail-type: ["eventtype"]
+        detail:
+          item:
+            eventtype: ["make_pizza"]
+      Targets:
+        - Arn: !GetAtt MakePizzaFunction.Arn
+          Id: TargetMakePizza
+          DeadLetterConfig:
+            Arn: !GetAtt EventBridgeDLQ.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 2
+            MaximumEventAgeInSeconds: 3600
+
+  CookPizzaRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref CustomEventBus
+      EventPattern:
+        source: ["make_pizza"]
+        detail-type: ["eventtype"]
+        detail:
+          item:
+            eventtype: ["cook_pizza"]
+      Targets:
+        - Arn: !GetAtt CookPizzaFunction.Arn
+          Id: TargetCookPizza
+          DeadLetterConfig:
+            Arn: !GetAtt EventBridgeDLQ.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 2
+            MaximumEventAgeInSeconds: 3600
+
+  DeliverPizzaRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref CustomEventBus
+      EventPattern:
+        source: ["cook_pizza"]
+        detail-type: ["eventtype"]
+        detail:
+          item:
+            eventtype: ["deliver_pizza"]
+      Targets:
+        - Arn: !GetAtt DeliverPizzaFunction.Arn
+          Id: TargetDeliverPizza
+          DeadLetterConfig:
+            Arn: !GetAtt EventBridgeDLQ.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 2
+            MaximumEventAgeInSeconds: 3600
+
+  ReceiveEventsRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref CustomEventBus
+      EventPattern:
+        detail-type: ["eventtype"]
+        detail:
+          item:
+            eventtype: ["make_pizza", "cook_pizza", "deliver_pizza", "delivered"]
+      Targets:
+        - Arn: !GetAtt ReceiveEventsFunction.Arn
+          Id: TargetReceiveEvents
+          DeadLetterConfig:
+            Arn: !GetAtt EventBridgeDLQ.Arn
+          RetryPolicy:
+            MaximumRetryAttempts: 2
+            MaximumEventAgeInSeconds: 3600
+
+  # Permissions for EventBridge to invoke Lambdas
+  PermMakePizza:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MakePizzaFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt MakePizzaRule.Arn
+
+  PermCookPizza:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CookPizzaFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt CookPizzaRule.Arn
+
+  PermDeliverPizza:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DeliverPizzaFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DeliverPizzaRule.Arn
+
+  PermReceiveEvents:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ReceiveEventsFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ReceiveEventsRule.Arn
+
+  # ===================================================================
+  # 7. INGESTION LAYER - HTTP API & WEBSOCKET STAGES
+  # ===================================================================
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "http-api-${Environment}"
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: ["*"]
+        AllowMethods: ["POST"]
+        AllowHeaders: ["*"]
+      Tags:
+        Environment: !Ref Environment
+
+  HttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationSubtype: EventBridge-PutEvents
+      CredentialsArn: !GetAtt ApiGatewayRole.Arn
+      PayloadFormatVersion: "1.0"
+      RequestParameters:
+        Detail: "$request.body"
+        DetailType: "eventtype"
+        EventBusName: !GetAtt CustomEventBus.Arn
+        Source: "lab_http_api"
+
+  HttpApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /"
+      Target: !Join ["/", ["integrations", !Ref HttpApiIntegration]]
+
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: "$default"
+      AutoDeploy: true
+
+  # --- WebSocket Routes & Stages ---
+  WebSocketConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketConnectFunction.Arn}/invocations"
+
+  WebSocketConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: "$connect"
+      Target: !Join ["/", ["integrations", !Ref WebSocketConnectIntegration]]
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      StageName: production
+      AutoDeploy: true
+
+  PermWebSocketConnect:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WebSocketConnectFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*"
+
+# ===================================================================
+# 8. OUTPUTS
+# ===================================================================
+Outputs:
+  HttpApiInvokeUrl:
+    Description: 'Invoke URL for HTTP API (Paste into client app API URL)'
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/"
+
+  WebSocketUrl:
+    Description: 'WebSocket URL (Paste into client app WebSocket URL)'
+    Value: !Sub "wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/production"
+
+  EventBusArn:
+    Description: 'ARN of the Custom EventBridge Event Bus'
+    Value: !GetAtt CustomEventBus.Arn
+
+  DynamoDBTableArn:
+    Description: 'ARN of the WebSocket Sessions DynamoDB Table'
+    Value: !GetAtt WebSocketConnectionsTable.Arn
+
+  MakePizzaLambdaArn:
+    Description: 'ARN of the MakePizza Lambda Function'
+    Value: !GetAtt MakePizzaFunction.Arn
+
+  ReceiveEventsLambdaArn:
+    Description: 'ARN of the ReceiveEvents Lambda Function'
+    Value: !GetAtt ReceiveEventsFunction.Arn
