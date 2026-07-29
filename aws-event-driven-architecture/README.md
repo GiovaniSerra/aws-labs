@@ -79,11 +79,11 @@ This project demonstrates a fully serverless, event-driven architecture built on
 ### 2. Event Routing (Amazon EventBridge)
 - **Rules on Custom Event Bus**: Active rules matching pattern attributes on `lab_event_bus`.
   
-  ![EventBridge Rules](./images/event%20buses%20-%20rules.png)
+  ![EventBridge Rules](https://github.com/GiovaniSerra/aws-labs/blob/main/aws-event-driven-architecture/images/event%20buses%20-%20rules.png)
 
 - **Event Bus Metrics & Monitoring**: Metric graphs demonstrating successful event publishing, latency, and function invocations.
   
-  ![EventBridge Monitoring](./images/event%20buses%20-%20monitoring.png)
+  ![EventBridge Monitoring](https://github.com/GiovaniSerra/aws-labs/blob/main/aws-event-driven-architecture/images/event%20buses%20-%20monitoring.png)
 
 ---
 
