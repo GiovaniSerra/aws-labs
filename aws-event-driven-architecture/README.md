@@ -14,6 +14,40 @@ This project demonstrates a fully serverless, event-driven architecture built on
 
 ---
 
+---
+
+## Event Schema Structure
+
+In Amazon EventBridge, all envelope fields are standardized. Custom payload properties are wrapped inside the `detail` object. Below is the envelope structure generated when an order event is published to `lab_event_bus`:
+
+```json
+{
+  "version": "0",
+  "id": "e3f12a84-7c30-4b82-bc10-983dfa2890ac",
+  "detail-type": "eventtype",
+  "source": "lab_http_api",
+  "account": "123456789012",
+  "time": "2026-07-28T22:15:00Z",
+  "region": "us-west-2",
+  "resources": [],
+  "detail": {
+    "item": {
+      "order_id": "3AB",
+      "eventtype": "make_pizza"
+    }
+  }
+}
+```
+
+Envelope Fields Breakdown:
+- source: Identifies the service or application that generated the event (e.g., lab_http_api, make_pizza, cook_pizza).
+- detail-type: Categorizes the event payload for pattern matching (configured as eventtype).
+- detail: The custom JSON payload containing order specifics (order_id, eventtype).
+- time: ISO-8601 timestamp representing when the event occurred.
+- resources: Optional array of AWS ARNs involved in the event context.
+
+---
+
 ## Architecture Diagram
 
 ![AWS Event-Driven Architecture](./docs/images/architecture_overview.png)
@@ -106,14 +140,25 @@ This project demonstrates a fully serverless, event-driven architecture built on
 
   ---
 
+### 4. End-to-End Application Testing
+- **Real-Time Order Flow**: Web application connecting to the WebSocket API, submitting an HTTP POST order, and receiving live status updates (`make_pizza` -> `cook_pizza` -> `deliver_pizza`) as events are published and processed asynchronously.
+
+  ![End-to-End Web App Test](./images/web_app_test.png)
+
+  ---
+
 ## Cost Analysis & FinOps Considerations
 
-A key advantage of this architecture is its purely serverless pay-per-use model:
+### Estimated Cost to Reproduce: **~$0.00 USD**
 
-- **Amazon API Gateway**: Charged per million requests for HTTP APIs ($1.00/M) and per million connection minutes + messages for WebSockets.
-- **Amazon EventBridge**: Charged per 1 million events published to the bus ($1.00/M).
-- **AWS Lambda**: Charged based on request volume and duration (GB-seconds), benefiting from the AWS Free Tier (1M free requests/month).
-- **Amazon DynamoDB**: On-Demand mode charges per Read/Write Request Unit (RRU/WRU), costing $0 for idle capacity.
+This architecture runs 100% on a serverless, pay-per-use model and fits well within the **AWS Free Tier**:
+
+- **Amazon API Gateway**:
+  - *HTTP API*: $1.00 per million requests (First 1M free/month).
+  - *WebSocket API*: $1.00 per million messages + connection minutes.
+- **Amazon EventBridge**: $1.00 per million custom events published (First 1M free/month).
+- **AWS Lambda**: Charged per request volume and duration (GB-seconds), covered by the 1M free requests/month.
+- **Amazon DynamoDB**: On-Demand capacity model costing $0.00 for idle storage and minimal lab reads/writes.
 
 ---
 
@@ -132,6 +177,19 @@ To deploy this architecture programmatically, use the template snippet below:
 - **Zero Idle Cost**: No servers, load balancers, or containers running when no orders are being placed.
 - **Direct Service Integration**: Integrating API Gateway directly with EventBridge eliminates an intermediate Lambda function, cutting request volume costs by up to 50% on API ingestion.
 - **Scale-to-Zero Efficiency**: Ideal for applications with unpredictable burst traffic, automatically scaling compute capacity during peak hours without over-provisioning.
+
+---
+
+---
+
+## Error Handling & Resiliency Patterns
+
+While this lab demonstrates a happy-path workflow, production event-driven architectures require fault-tolerant design:
+
+1. **Dead-Letter Queues (DLQ)**: Attach an Amazon SQS queue to EventBridge target rules. If a Lambda function fails to process an event after retry attempts, the payload is directed to the DLQ for investigation instead of being lost.
+2. **Lambda Retry Behavior**: EventBridge retries failed asynchronous invocations up to 2 times by default, with exponential backoff.
+3. **Idempotency**: Downstream workers (e.g., `cook_pizza`) should handle duplicate event delivery safely by validating current state before processing.
+4. **DynamoDB Connection Cleanup**: If a client abruptly closes a WebSocket connection, API Gateway returns a `410 GoneException`. In production, the `receive_events` Lambda should catch this exception and automatically delete stale `connection_id` records from DynamoDB.
 
 ---
 
