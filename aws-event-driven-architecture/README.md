@@ -14,7 +14,6 @@ This project demonstrates a fully serverless, event-driven architecture built on
 
 ---
 
----
 
 ## Event Schema Structure
 
@@ -50,7 +49,7 @@ Envelope Fields Breakdown:
 
 ## Architecture Diagram
 
-![AWS Event-Driven Architecture](./docs/images/architecture_overview.png)
+![AWS Event-Driven Architecture](https://github.com/GiovaniSerra/aws-labs/blob/main/aws-event-driven-architecture/images/ars.jfif)
 
 ---
 
