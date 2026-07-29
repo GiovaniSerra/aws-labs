@@ -1,1 +1,91 @@
+## Overview
+
+This project demonstrates a fully serverless, event-driven architecture built on AWS designed to process asynchronous workflows in real time. Using a pizza ordering scenario, the system decouples API requests from background processing workers, updating order states sequentially while broadcasting real-time status changes back to the client application via WebSockets.
+
+---
+
+## Why Use Each Tool?
+
+- **Amazon API Gateway (HTTP API)**: Provides a low-latency, cost-effective endpoint for RESTful request ingestion. Integrates directly with EventBridge without requiring intermediate compute code.
+- **Amazon API Gateway (WebSocket API)**: Enables persistent, bi-directional communication, allowing the server to push real-time order updates to the client without polling.
+- **Amazon EventBridge**: Serves as the central event bus, decoupling producers from consumers and routing events dynamically using declarative JSON pattern matching.
+- **AWS Lambda**: Executes lightweight, stateless compute logic for event transformation and status management, scaling automatically per invocation.
+- **Amazon DynamoDB**: Stores active WebSocket session mappings (`order_id` to `connection_id`) with single-digit millisecond latency.
+
+---
+
+## Architecture Diagram
+
+![AWS Event-Driven Architecture](./docs/images/architecture_overview.png)
+
+---
+
+## Key Objectives
+
+- Implement an event-driven pattern using EventBridge custom buses and rules.
+- Integrate API Gateway directly with AWS services (EventBridge) without proxy Lambdas.
+- Manage persistent WebSocket connections for real-time frontend updates.
+- Demonstrate both sequential event chaining and concurrent fan-out patterns.
+- Store and query session metadata using DynamoDB.
+
+---
+
+## Step-by-Step Implementation
+
+### Step 1: Compute Layer Setup (AWS Lambda)
+1. Created five Lambda functions using Python 3.12 (`make_pizza`, `cook_pizza`, `deliver_pizza`, `websocket_connect`, and `receive_events`).
+2. Configured IAM execution roles for least-privilege access to EventBridge, DynamoDB, and API Gateway Management API.
+3. Defined environment variables (`EVENT_BUS`, `TABLENAME`, `APIGW_ENDPOINT`) to remove hardcoded configuration from source code.
+
+### Step 2: Event Bus & Routing Rules (Amazon EventBridge)
+1. Provisioned custom event bus `lab_event_bus`.
+2. Created pattern-matching rules for sequential state updates:
+   - `lab_make_pizza_rule` -> Targets `make_pizza` Lambda.
+   - `lab_cook_pizza_rule` -> Targets `cook_pizza` Lambda.
+   - `lab_deliver_pizza_rule` -> Targets `deliver_pizza` Lambda.
+3. Created `lab_receive_events_rule` matching all event types to trigger `receive_events` concurrently (fan-out pattern).
+
+### Step 3: API Gateway & Frontend Integration
+1. Configured HTTP API (`lab_http_api`) with a `POST` route mapped directly to EventBridge `PutEvents`.
+2. Enabled CORS configuration (`*` origins, `POST` method) to allow web client execution.
+3. Created WebSocket API (`lab_websocket_api`) with `$connect` route pointing to `websocket_connect` Lambda.
+4. Deployed WebSocket API and updated `receive_events` Lambda with the `@connections` management endpoint URL.
+
+---
+
+## Cost Analysis & FinOps Considerations
+
+A key advantage of this architecture is its purely serverless pay-per-use model:
+
+- **Amazon API Gateway**: Charged per million requests for HTTP APIs ($1.00/M) and per million connection minutes + messages for WebSockets.
+- **Amazon EventBridge**: Charged per 1 million events published to the bus ($1.00/M).
+- **AWS Lambda**: Charged based on request volume and duration (GB-seconds), benefiting from the AWS Free Tier (1M free requests/month).
+- **Amazon DynamoDB**: On-Demand mode charges per Read/Write Request Unit (RRU/WRU), costing $0 for idle capacity.
+
+---
+
+## Infrastructure as Code with AWS CloudFormation
+
+To deploy this architecture programmatically, use the template snippet below:
+
+```yaml
+
+```
+
+---
+
+## Key Financial Takeaways
+
+- **Zero Idle Cost**: No servers, load balancers, or containers running when no orders are being placed.
+- **Direct Service Integration**: Integrating API Gateway directly with EventBridge eliminates an intermediate Lambda function, cutting request volume costs by up to 50% on API ingestion.
+- **Scale-to-Zero Efficiency**: Ideal for applications with unpredictable burst traffic, automatically scaling compute capacity during peak hours without over-provisioning.
+
+---
+
+## Lessons Learned & Best Practices
+
+- **Loose Coupling**: EventBridge acts as a buffer, ensuring producers don't need awareness of consumer implementation or availability.
+- **Environment Variable Isolation**: Decoupling configuration data from code simplifies multi-environment deployments (Dev/Staging/Prod).
+- **Fan-Out Power**: A single published event can trigger background processing and real-time UI updates simultaneously without complex orchestration code.
+- **Session Cleanup**: In production, stale WebSocket connection IDs in DynamoDB should be cleaned up upon disconnect events or via DynamoDB TTL.
 
